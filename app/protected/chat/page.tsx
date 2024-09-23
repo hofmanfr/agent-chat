@@ -161,11 +161,11 @@ export default function ChatInterface() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    router.push('/sign-in')
+    router.push('/')
   }
 
   return (
-    <div className="flex h-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900">
+    <div className="flex h-screen w-screen bg-gradient-to-b from-gray-900 via-purple-900 to-gray-900">
       <AnimatePresence>
         {sidebarOpen && (
           <motion.aside
