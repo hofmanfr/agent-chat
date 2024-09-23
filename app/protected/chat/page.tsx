@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bars3Icon, PaperAirplaneIcon, SparklesIcon, PlusIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, PaperAirplaneIcon, SparklesIcon, PlusIcon, ArrowRightOnRectangleIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 
@@ -20,7 +20,12 @@ type ChatSession = {
   date: Date
 }
 
-const GlowingButton = ({ children, onClick, className = '', fullWidth = false }) => (
+const GlowingButton = ({ children, onClick, className = '', fullWidth = false }: {
+  children: React.ReactNode;
+  onClick: () => void;
+  className?: string;
+  fullWidth?: boolean;
+}) => (
   <button
     onClick={onClick}
     className={`px-4 py-2 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 text-white font-bold hover:from-purple-700 hover:to-blue-600 transition-all duration-300 shadow-lg hover:shadow-xl relative overflow-hidden group ${fullWidth ? 'w-full' : ''} ${className}`}
@@ -54,6 +59,7 @@ export default function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const router = useRouter()
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -66,6 +72,7 @@ export default function ChatInterface() {
   }, [])
 
   const fetchChatSessions = async () => {
+    console.log('Fetching chat sessions...')
     const { data: sessions, error } = await supabase
       .from('chat_sessions')
       .select('*')
@@ -74,11 +81,13 @@ export default function ChatInterface() {
     if (error) {
       console.error('Error fetching chat sessions:', error)
     } else {
+      console.log('Fetched chat sessions:', sessions)
       setChatSessions(sessions)
     }
   }
 
   const handleSendMessage = async () => {
+    console.log('Sending message:', inputMessage)
     if (inputMessage.trim()) {
       const newMessage: Message = {
         id: messages.length + 1,
@@ -116,10 +125,21 @@ export default function ChatInterface() {
 
         // Update the chat session
         if (currentSessionId) {
-          await supabase
+          const sessionUpdate: { last_message: string; date: string; title?: string } = { 
+            last_message: inputMessage, 
+            date: new Date().toISOString() 
+          }
+          if (messages.length === 0) { // Check if it's the first message
+            sessionUpdate.title = inputMessage.substring(0, 40)
+          }
+          const { error } = await supabase
             .from('chat_sessions')
-            .update({ last_message: inputMessage, date: new Date().toISOString() })
+            .update(sessionUpdate)
             .eq('id', currentSessionId)
+          
+          if (error) {
+            console.error('Error updating chat session:', error)
+          }
         }
 
         await fetchChatSessions()
@@ -130,6 +150,7 @@ export default function ChatInterface() {
   }
 
   const handleNewChat = async () => {
+    console.log('Creating new chat...')
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       console.error('User not authenticated')
@@ -143,7 +164,8 @@ export default function ChatInterface() {
 
     if (error) {
       console.error('Error creating new chat session:', error)
-    } else {
+    } else if (data) {
+      console.log('New chat session created:', data[0])
       setCurrentSessionId(data[0].id)
       setMessages([])
       await fetchChatSessions()
@@ -151,6 +173,7 @@ export default function ChatInterface() {
   }
 
   const handleSelectSession = async (sessionId: string) => {
+    console.log('handleSelectSession called with sessionId:', sessionId)
     setCurrentSessionId(sessionId)
     const { data: messages, error } = await supabase
       .from('messages')
@@ -160,14 +183,70 @@ export default function ChatInterface() {
 
     if (error) {
       console.error('Error fetching messages:', error)
-    } else {
+    } else if (messages) {
+      console.log('Fetched messages:', messages)
       setMessages(messages.map(message => ({
         id: message.id,
-        text: message.content, // Ensure the content is correctly mapped
+        text: message.content,
         sender: message.sender,
         timestamp: new Date(message.timestamp)
       })))
     }
+  }
+
+  const handleDeleteSession = async (sessionId: string) => {
+    setDeleteSessionId(sessionId)
+  }
+
+  const confirmDeleteSession = async () => {
+    if (!deleteSessionId) return
+
+    console.log('Deleting session:', deleteSessionId)
+    try {
+      // Delete messages associated with the session
+      const { error: messagesError } = await supabase
+        .from('messages')
+        .delete()
+        .eq('session_id', deleteSessionId)
+
+      if (messagesError) {
+        console.error('Error deleting messages:', messagesError)
+        return
+      }
+
+      console.log('Messages deleted successfully')
+
+      // Delete the session
+      const { error: sessionError } = await supabase
+        .from('chat_sessions')
+        .delete()
+        .eq('id', deleteSessionId)
+
+      if (sessionError) {
+        console.error('Error deleting chat session:', sessionError)
+        return
+      }
+
+      console.log('Chat session deleted successfully')
+
+      // Update the chat sessions list
+      await fetchChatSessions()
+
+      // Clear messages if the deleted session was the current session
+      if (deleteSessionId === currentSessionId) {
+        setMessages([])
+        setCurrentSessionId(null)
+        console.log('Cleared current session')
+      }
+
+      setDeleteSessionId(null)
+    } catch (error) {
+      console.error('Error deleting chat session:', error)
+    }
+  }
+
+  const cancelDeleteSession = () => {
+    setDeleteSessionId(null)
   }
 
   const handleLogout = async () => {
@@ -193,19 +272,38 @@ export default function ChatInterface() {
               </GlowingButton>
               <div className="space-y-4">
                 {chatSessions.map(session => (
-                  <motion.div
-                    key={session.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors relative overflow-hidden group"
-                    onClick={() => handleSelectSession(session.id)}
-                  >
-                    <h3 className="font-medium text-white">{session.title}</h3>
-                    <p className="text-sm text-gray-300 truncate">{session.lastMessage}</p>
-                    <p className="text-xs text-gray-400 mt-1">{formatDate(new Date(session.date))}</p>
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-blue-500 opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
-                  </motion.div>
+                  <div key={session.id} className="flex items-center space-x-2">
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="p-3 bg-gray-700 rounded-lg relative overflow-hidden group cursor-pointer flex-grow"
+                      onClick={() => {
+                        console.log('Clicked on session:', session.id)
+                        handleSelectSession(session.id)
+                      }}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div className="flex-grow">
+                          <h3 className="font-medium text-white">{session.title}</h3>
+                          <p className="text-sm text-gray-300 truncate">{session.lastMessage}</p>
+                          <p className="text-xs text-gray-400 mt-1">{formatDate(new Date(session.date))}</p>
+                        </div>
+                      </div>
+                      <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-blue-500 opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+                    </motion.div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        console.log('Delete button clicked for session:', session.id)
+                        handleDeleteSession(session.id)
+                      }}
+                      className="p-2 rounded-md hover:bg-gray-600 transition-colors text-white"
+                      aria-label="Delete chat"
+                    >
+                      <TrashIcon className="h-5 w-5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -273,6 +371,30 @@ export default function ChatInterface() {
           </div>
         </footer>
       </div>
+
+      {/* Modal für Löschbestätigung */}
+      {deleteSessionId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-lg shadow-xl">
+            <h3 className="text-xl font-semibold text-white mb-4">Delete Chat</h3>
+            <p className="text-gray-300 mb-6">Are you sure you want to delete this chat? This action cannot be undone.</p>
+            <div className="flex justify-end space-x-4">
+              <button
+                onClick={cancelDeleteSession}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteSession}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
