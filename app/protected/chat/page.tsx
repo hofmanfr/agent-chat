@@ -118,7 +118,7 @@ export default function ChatInterface() {
         if (currentSessionId) {
           await supabase
             .from('chat_sessions')
-            .update({ lastMessage: inputMessage, date: new Date().toISOString() })
+            .update({ last_message: inputMessage, date: new Date().toISOString() })
             .eq('id', currentSessionId)
         }
 
@@ -130,9 +130,15 @@ export default function ChatInterface() {
   }
 
   const handleNewChat = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.error('User not authenticated')
+      return
+    }
+
     const { data, error } = await supabase
       .from('chat_sessions')
-      .insert({ title: 'New Chat', lastMessage: 'Start a new conversation', date: new Date().toISOString() })
+      .insert({ user_id: user.id, title: 'New Chat', last_message: 'Start a new conversation', date: new Date().toISOString() })
       .select()
 
     if (error) {
@@ -155,7 +161,12 @@ export default function ChatInterface() {
     if (error) {
       console.error('Error fetching messages:', error)
     } else {
-      setMessages(messages)
+      setMessages(messages.map(message => ({
+        id: message.id,
+        text: message.content, // Ensure the content is correctly mapped
+        sender: message.sender,
+        timestamp: new Date(message.timestamp)
+      })))
     }
   }
 
