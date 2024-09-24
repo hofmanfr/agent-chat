@@ -61,3 +61,8 @@ Dieses Tool ist ein AI-gestützter Forschungsassistent, der CrewAI Agents innerh
 ## Unterstützung
 
 Bei Fragen oder Problemen erstellen Sie bitte ein Issue im GitHub-Repository oder kontaktieren Sie das Entwicklungsteam.
+
+## Quelle
+
+Dieses Projekt wurde inspiriert durch das folgende Video-Tutorial:
+[Building an AI Agent with LangFlow, CrewAI, and Supabase](https://www.youtube.com/watch?v=vScKVTF2kk4)
